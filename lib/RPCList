@@ -1,0 +1,44 @@
+#define MAX30003_NAME "MAX30003"
+
+struct RPC_registeredProcedure  Define_MAX30001_WriteReg = { MAX30001_NAME, "WriteReg", MAX30001_WriteReg };
+
+struct RPC_registeredProcedure  Define_MAX30001_ReadReg = { MAX30001_NAME, "ReadReg", MAX30001_ReadReg };
+
+struct RPC_registeredProcedure  Define_MAX30001_Start = { MAX30001_NAME, "Start", MAX30001_Start };
+
+struct RPC_registeredProcedure  Define_MAX30001_Stop = { MAX30001_NAME, "Stop", MAX30001_Stop };
+
+struct RPC_registeredProcedure  Define_MAX30001_Rbias_FMSTR_Init = { MAX30001_NAME, "Rbias_FMSTR_Init", MAX30001_Rbias_FMSTR_Init };
+
+struct RPC_registeredProcedure  Define_MAX30001_CAL_InitStart = { MAX30001_NAME, "CAL_InitStart", MAX30001_CAL_InitStart };
+
+struct RPC_registeredProcedure  Define_MAX30001_ECG_InitStart = { MAX30001_NAME, "ECG_InitStart", MAX30001_ECG_InitStart };
+
+struct RPC_registeredProcedure  Define_MAX30001_ECGFast_Init = { MAX30001_NAME, "ECGFast_Init", MAX30001_ECGFast_Init };
+
+struct RPC_registeredProcedure  Define_MAX30001_PACE_InitStart = { MAX30001_NAME, "PACE_InitStart", MAX30001_PACE_InitStart };
+
+struct RPC_registeredProcedure  Define_MAX30001_BIOZ_InitStart = { MAX30001_NAME, "BIOZ_InitStart", MAX30001_BIOZ_InitStart };
+
+struct RPC_registeredProcedure  Define_MAX30001_RtoR_InitStart = { MAX30001_NAME, "RtoR_InitStart", MAX30001_RtoR_InitStart };
+
+struct RPC_registeredProcedure  Define_MAX30001_Stop_ECG = { MAX30001_NAME, "Stop_ECG", MAX30001_Stop_ECG };
+
+struct RPC_registeredProcedure  Define_MAX30001_Stop_PACE = { MAX30001_NAME, "Stop_PACE", MAX30001_Stop_PACE };
+
+struct RPC_registeredProcedure  Define_MAX30001_Stop_BIOZ = { MAX30001_NAME, "Stop_BIOZ", MAX30001_Stop_BIOZ };
+
+struct RPC_registeredProcedure  Define_MAX30001_Stop_RtoR = { MAX30001_NAME, "Stop_RtoR", MAX30001_Stop_RtoR };
+
+struct RPC_registeredProcedure  Define_MAX30001_Stop_Cal = { MAX30001_NAME, "Stop_Cal", MAX30001_Stop_Cal };
+
+struct RPC_registeredProcedure  Define_MAX30001_Enable_ECG_LeadON = { MAX30001_NAME, "Enable_ECG_LeadON", MAX30001_Enable_ECG_LeadON };
+
+struct RPC_registeredProcedure  Define_MAX30001_Enable_BIOZ_LeadON = { MAX30001_NAME, "Enable_BIOZ_LeadON", MAX30001_Enable_BIOZ_LeadON };
+
+struct RPC_registeredProcedure  Define_MAX30001_Read_LeadON = { MAX30001_NAME, "Read_LeadON", MAX30001_Read_LeadON };
+
+struct RPC_registeredProcedure  Define_MAX30001_StartTest = { MAX30001_NAME, "StartTest", MAX30001_StartTest };
+
+struct RPC_registeredProcedure  Define_MAX30001_INT_assignment = { MAX30001_NAME, "INT_assignment", MAX30001_INT_assignment };
+ 
