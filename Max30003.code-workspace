@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"name": "200510-153018-esp32doit-devkit-v1",
+			"path": "C:\\Users\\John\\Documents\\PlatformIO\\Projects\\200510-153018-esp32doit-devkit-v1"
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"random": "cpp"
+		}
+	}
+}

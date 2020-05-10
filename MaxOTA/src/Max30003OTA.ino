@@ -4,25 +4,27 @@
 #include <ArduinoOTA.h>
 #include <Adafruit_NeoPixel.h>
 
-const char* ssid = "...";
-const char* password = "...";
+#include "..\include\secrets.h"
+
+const char* ssid = SSID;                // Github immune secrets file
+const char* password = PASS;
 
 // NeoPixel LED
-#define LED_TYPE      WS2812B
+#define PIXEL_TYPE      WS2812B
 
 const uint16_t PIXEL_PIN        = 14;   // Digital14 attached to NeoPixel data
-const uint16_t NUMPIXELS        = 1;
+const uint16_t PIXEL_COUNT      = 1;
 const uint16_t BRIGHTNESS       = 128;
-const uint16_t FORMAT           = NEO_GRB + NEO_KHZ800;
+const uint16_t PIXEL_FORMAT     = NEO_GRB + NEO_KHZ800;
 
 const uint8_t  cLedOff    = 0;
 const uint8_t  cLedRed    = 1;
 const uint8_t  cLedGreen  = 2;
 const uint8_t  cLedBlue   = 4;
 
-#define R2R_LED_ON    BRIGHTNESS
-#define R2R_LED_OFF   0
-#define R2R_LED_FLASH 16
+#define LED_ON    BRIGHTNESS
+#define LED_OFF   0
+#define LED_FLASH 16
 
 uint8_t cLED = cLedOff;
 uint8_t bLED = BRIGHTNESS;
@@ -46,8 +48,9 @@ void setup() {
   Serial.println("Booting");
 
   cLED |= cLedBlue;
-  LedPixel = new Adafruit_NeoPixel(NUMPIXELS, PIXEL_PIN, FORMAT);
+  LedPixel = new Adafruit_NeoPixel(PIXEL_COUNT, PIXEL_PIN, PIXEL_FORMAT);
   LedPixel->begin();
+  LedPixel->show();
   startMillis = millis();
 
   WiFi.mode(WIFI_STA);
@@ -110,10 +113,8 @@ void loop() {
   currentMillis = millis();
   if ((currentMillis - startMillis) >= 1000) {  //test for 1s
     startMillis = currentMillis;
-    cLED += 1;
-    cLED &= 0x07;
-    ((bLED += 1) |= BRIGHTNESS); 
-    Led(cLED, bLED);                             // Update LED state
-    Serial.print(cLED);Serial.print(", ");Serial.println(bLED);
+    ((cLED += 1) &= 0x07);                      // Change colour, rollover
+    ((bLED += 1) |= BRIGHTNESS);                // Increase brightness, rollover
+    Led(cLED, bLED);                            // Update LED state
   }
 }
