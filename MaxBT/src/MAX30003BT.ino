@@ -35,6 +35,9 @@ String BTname = "HeartSensor";
 // char *BTpin = "1234";
 char BTSendBuffer[32];
 bool BTconnected;
+int BTCount = 0;
+String BTcallback = "";
+String BTreadData = "";
 
 uint8_t rLED = rLedOff;       // R2R Status LED
 Adafruit_NeoPixel *rLedPixel;
@@ -90,11 +93,63 @@ void IRAM_ATTR ecgINT2BIRQ()  {            // R2R IRQ
   portEXIT_CRITICAL_ISR(&ecgINT2BMux);
 } 
 
-void setup()
+void BT_callback(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
 {
-  Serial.begin(115200);                   // USB Serial
-  Serial.println("Checking OTA .. ");
+    if(event == ESP_SPP_SRV_OPEN_EVT) {
+        BTcallback = "BT Connection established";
+        Serial.println("");
+        for (int i = 0; i < 6; i++) {
+          Serial.printf("%02X", param->srv_open.rem_bda[i]);
+          if (i < 5) {
+           Serial.print(":");
+          }
+        }
+        Serial.println("");
+        BTconnected = true;
+    }
+    else if(event == ESP_SPP_CLOSE_EVT) {
+        BTcallback = "BT Connection closed";
+        BTconnected = false;
+        delay(100);
+//        ESP.restart();
+    }
+    else if(event == ESP_SPP_DATA_IND_EVT) {
+        BTcallback = "BT Data received";
+    }
+    else if(event == ESP_SPP_WRITE_EVT) {
+        BTcallback = "BT Data sent";
+    }
+}
+
+void setupMAX30003(void){
+ // Use LEDC(PWM) to set FCLK to 32768 Hz
+  pinMode(FCLKPin, OUTPUT);
+  ledcSetup(FCLKChannel, FCLKFreq, FCLKResolution);
+  ledcAttachPin(FCLKPin, FCLKChannel);
+  ledcWrite(FCLKChannel, FCLKDuty);
+
+//  Serial.println("Initializing SPI ..");
+
+  pinMode(MAX30003_CS_PIN, OUTPUT);     // Also SPI SS
+  digitalWrite(MAX30003_CS_PIN, HIGH);  //disable device
+
+  // Initialise vspi with default pins : SCLK = 18, MISO = 19, MOSI = 23, SS = 5
+  SPI.begin();
+  SPI.setBitOrder(MSBFIRST); 
+  SPI.setDataMode(SPI_MODE0);
+  SPI.setClockDivider(SPI_CLOCK_DIV4);
   
+  rLED |= rLedBlue;
+  rLedPixel = new Adafruit_NeoPixel(NUMPIXELS, PIXEL_PIN, FORMAT);
+  rLedPixel->begin();
+  startMillis = millis();
+
+//  Serial.print("Initializing MAX30003 ..");
+  MAX30003_begin();   // initialize MAX30003
+}
+
+void setupOTA(void) {
+  Serial.println("Checking OTA .. ");
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
   while (WiFi.waitForConnectResult() != WL_CONNECTED) {
@@ -103,17 +158,11 @@ void setup()
     ESP.restart();
   }
 
-  // Port defaults to 3232
-   ArduinoOTA.setPort(3232);
+   ArduinoOTA.setPort(3232);                // Port defaults to 3232
+   ArduinoOTA.setHostname("HeartSensor");   // Hostname defaults to esp3232-[MAC]
+   ArduinoOTA.setPassword("max30003");      // No authentication by default
 
-  // Hostname defaults to esp3232-[MAC]
-   ArduinoOTA.setHostname("HeartSensor");
-
-  // No authentication by default
-   ArduinoOTA.setPassword("max30003");
-
-  // Password can be set with it's md5 value as well
-  // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3
+  // MD5(admin) = 21232f297a57a5a743894a0e4a801fc3  // Password can be set with it's md5 value as well
   // ArduinoOTA.setPasswordHash("21232f297a57a5a743894a0e4a801fc3");
 
   ArduinoOTA
@@ -142,39 +191,26 @@ void setup()
       else if (error == OTA_END_ERROR) Serial.println("End Failed");
     });
 
-  ArduinoOTA.begin();
+  ArduinoOTA.begin();               // For loop() ?
 
   Serial.println("Ready");
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
-  
-  SerialBT.begin(BTname);           // Bluetooth Serial
-//  Serial.println("Initializing FCLK ..");
 
- // Use LEDC(PWM) to set FCLK to 32768 Hz
-  pinMode(FCLKPin, OUTPUT);
-  ledcSetup(FCLKChannel, FCLKFreq, FCLKResolution);
-  ledcAttachPin(FCLKPin, FCLKChannel);
-  ledcWrite(FCLKChannel, FCLKDuty);
+}
 
-//  Serial.println("Initializing SPI ..");
+void setupBT(){
+  SerialBT.register_callback(BT_callback);
+  BTconnected = SerialBT.begin(BTname);   // Bluetooth Serial (MAX)
+}
 
-  pinMode(MAX30003_CS_PIN, OUTPUT);     // Also SPI SS
-  digitalWrite(MAX30003_CS_PIN, HIGH);  //disable device
+void setup() {
+  Serial.begin(115200);                   // USB Serial
 
-  // Initialise vspi with default pins : SCLK = 18, MISO = 19, MOSI = 23, SS = 5
-  SPI.begin();
-  SPI.setBitOrder(MSBFIRST); 
-  SPI.setDataMode(SPI_MODE0);
-  SPI.setClockDivider(SPI_CLOCK_DIV4);
-  
-  rLED |= rLedBlue;
-  rLedPixel = new Adafruit_NeoPixel(NUMPIXELS, PIXEL_PIN, FORMAT);
-  rLedPixel->begin();
-  startMillis = millis();
+  setupOTA();
+  setupBT();
+  setupMAX30003();
 
-//  Serial.print("Initializing MAX30003 ..");
-  MAX30003_begin();   // initialize MAX30003
 }
 
 void loop() {
@@ -186,6 +222,31 @@ void loop() {
     DataPacketHeader[11] += 1;  
   }
   r2rLed(rLED);                             // Update LED state
+
+// Handle BT connect/disconnect
+  do {
+    if (BTcallback != "") {
+      if (BTcallback == "BT Data sent") {
+        BTcallback = "";
+      }
+      else if (BTcallback == "BT Data received") {
+        BTcallback = "";
+      }
+      else if (BTcallback == "BT Connection established") {
+        Serial.println(BTcallback);
+        BTcallback = "";
+      }
+      else if (BTcallback == "BT Connection closed") {
+        Serial.println(BTcallback);
+        BTcallback = "";
+        delay(100);
+        BTconnected = SerialBT.begin(BTname);   // Bluetooth Serial (MAX)
+        BTconnected = true;
+      }
+    }
+    delay(20);
+  } while (!BTconnected); 
+
 /*
     do {
       MAX30003_Read_Reg (STATUS);             // Read status register

@@ -626,7 +626,7 @@ int32_t SPI_Transmit(const uint8_t *tx_buf, uint32_t tx_size, uint8_t *rx_buf, u
   return 0;
 }
 
-PtrFunction_t onDataAvailableCallback = NULL;                       // Set onDataAvailableCallback to 'do nothing'
+//PtrFunction_t onDataAvailableCallback = NULL;                       // Set onDataAvailableCallback to 'do nothing'
 PtrFunction_t onDataAvailableCallback = &StreamPacketUint32;        // Set onDataAvailableCallback to StreamPacketUint32(...);
 
 //******************************************************************************
