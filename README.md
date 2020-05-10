@@ -11,12 +11,16 @@ It has been changed to work within the *Arduino ESP32* framework rather than the
 As such, it is not meant to be production-grade, rather coded for experimenters.  
   
 The code base comprises  
-1. a serial monitor that sends data to a serial plotter over bluetooth  
 1. a version to support MAX30001-EVSYS  
+1. a serial interface that sends data to a serial plotter over bluetooth  
+1. an OTA initial load (requires your SSID/PASS)   
   
 It is a work-in-progress and has been modified by an engineer rather than a real software programmer.  
+
+The code is being developed using VSCODE on Windows10. However, some modules work using the Arduino IDE.  
   
-### Important improvements include:  
+### Important improvements include: 
+* Ability to use MAX30001-EVSYS for register setting evaluation  
 * Updated register initialization, rather than the original 'calibration mode'  
 * [OTA upload](https://lastminuteengineers.com/esp32-ota-updates-arduino-ide/)  
 * Serial bluetooth for use with Arduino monitor or [SerialPlot](https://bitbucket.org/hyOzd/serialplot/src)  
