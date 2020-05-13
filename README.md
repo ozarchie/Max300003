@@ -5,6 +5,8 @@ ESP32 focussed software and experimental documentation
 This software derives, in parts, from the original work at  
 * [MAX30001-EVSYS](https://os.mbed.com/teams/MaximIntegrated/code/MAX30001-MAX32630FTHR-ECG-Bioz-EVKIT/shortlog/)  (Emre.Eken)   
 * [HeartyPatch](https://github.com/patchinc/heartypatch)  
+
+Note that HeartyPatch/Protocentral has announced commercialisation of some of their products. Any reference to their commercial name, *HeartyPatch*, will be replaced with *HeartSensor* in order to avoid any potential commercial issues. As required, any software will retain acknowledgements of the original code and licences.  
    
 Relevant software acknlowledgements are included, and if not, are meant to be included.  
 It has been changed to work within the *Arduino ESP32* framework rather than the _esp-idf_ framework.  
