@@ -2,7 +2,16 @@
 
 #include <arduino.h>
 #include "..\include\permission.h"
+
+ 
+   /**
+   * @brief type definition for data interrupt
+   */
+  typedef void(* PtrFunction_t)(uint32_t , uint32_t *, uint32_t );
+  
+
 #include "..\include\esp32_rpc.h"
+
 
 /**
    * @brief This function sets up the Resistive Bias mode and also selects the master clock frequency.
@@ -274,12 +283,9 @@
    */
   void max30003_ServiceLeadoff(uint32_t currentTime);
  
-   /**
-   * @brief type definition for data interrupt
-   */
-  typedef void (*PtrFunction_t)(uint32_t id, uint32_t *buffer, uint32_t length);
- 
   /**
    * @brief Used to connect a callback for when interrupt data is available
    */
-  void onDataAvailable(PtrFunction_t onDataReady);
+  void onDataAvailable(PtrFunction_t );
+
+PtrFunction_t onDataAvailableCallback = NULL;                       // Set onDataAvailableCallback to 'do nothing'

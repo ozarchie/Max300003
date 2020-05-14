@@ -4,7 +4,7 @@
 #include <ArduinoOTA.h>
 #include <Adafruit_NeoPixel.h>
 
-#include "..\include\secrets.h"
+#include "..\data\secrets.h"
 
 const char* ssid = SSID;                // Github immune secrets file
 const char* password = PASS;

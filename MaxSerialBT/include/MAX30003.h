@@ -60,21 +60,27 @@ const uint16_t FCLKDuty = 127;          // Square wave (50% duty cycle, ((2^8 - 
 
 // NeoPixel LED
 #define LED_TYPE      WS2812B
-
 const uint16_t PIXEL_PIN        = 14;   // Digital14 attached to NeoPixel data
-const uint16_t NUMPIXELS        = 1;
-const uint16_t BRIGHTNESS       = 100;
-const uint16_t FORMAT           = NEO_GRB + NEO_KHZ800;
+const uint16_t PIXEL_COUNT      = 1;
+const uint16_t PIXEL_FORMAT     = NEO_GRB + NEO_KHZ800;
 
+const uint8_t  cLedOff    = 0;
+const uint8_t  cLedRed    = 1;
+const uint8_t  cLedGreen  = 2;
+const uint8_t  cLedBlue   = 4;
 
-/// define all of the modes the LED can support
+const uint16_t BRIGHTNESS       = 128;
+#define LED_ON          BRIGHTNESS
+#define LED_OFF         0
+#define LED_FLASH       2
+#define R2R_LED_FLASH   1
+#define BLINK_RATE      1000
 
-const uint8_t  rLedOff    = 0;
-const uint8_t  rLedRed    = 1;
-const uint8_t  rLedGreen  = 2;
-const uint8_t  rLedBlue   = 4;
+void max30003_synch(void);
+void MAX30003_Write_Reg (uint8_t , uint32_t );
+uint32_t MAX30003_Read_Reg(uint8_t );
+void MAX30003_Read_Burst(int );
+void MAX30003_begin();
 
-/// define the values that turn the LED on or off at the pin
-#define R2R_LED_ON    BRIGHTNESS
-#define R2R_LED_OFF   0
-#define R2R_LED_FLASH 16
+void Hex8(uint8_t *, uint8_t *, uint8_t );     // formats 8-bit data in hex
+void Led(uint8_t , uint8_t );                  // HAndle 3-color pixel

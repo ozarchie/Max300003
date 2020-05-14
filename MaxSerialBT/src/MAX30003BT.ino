@@ -9,16 +9,20 @@
 #include <ArduinoOTA.h>
 
 #include "..\include\MAX30003.h"
-#include "..\include\secrets.h"
+#include "..\..\data\secrets.h"
 
 const char* ssid = SSID;
 const char* password = PASS;
 
-//variables for blinking an LED with Millis
-const int led = 2;                              // ESP32 Pin to which onboard LED is connected
-unsigned long previousMillis = 0;               // will store last time LED was updated
-const long interval = 1000;                     // interval at which to blink (milliseconds)
-int ledState = LOW;                             // ledState used to set the LED
+// NeoPixel LED
+Adafruit_NeoPixel *LedPixel;
+uint8_t cLED = cLedGreen;                         // Status LED
+uint8_t bLED = BRIGHTNESS;
+uint8_t r, g, b;
+
+uint32_t startMillis = 0;
+uint32_t currentMillis = 0;
+unsigned long previousMillis = 0;
 
 #if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
 #error Bluetooth is not enabled! Please run `make menuconfig` to and enable it
@@ -26,6 +30,9 @@ int ledState = LOW;                             // ledState used to set the LED
 
 #undef  CALIBRATION
 #define ECG_READ
+
+#undef BLE_ECG
+#define BLE_R2R
 
 #undef  SERIAL_MONITOR
 #define SERIAL_PLOTTER
@@ -39,20 +46,54 @@ int BTCount = 0;
 String BTcallback = "";
 String BTreadData = "";
 
-uint8_t rLED = rLedOff;       // R2R Status LED
-Adafruit_NeoPixel *rLedPixel;
-
-uint16_t i=0;
-uint32_t startMillis = 0;
-uint32_t currentMillis = 0;
 uint8_t printGrid = 0;
 
+/* TCP packet format
+Offset  Byte Value	          Description
+0-1     0x0A, oxFA            Start of frame
+2-3	    Payload Size          LSB, MSB	 
+4	      Protocol version	    TCP -  0x03
+5-8	    Packet sequence	      Incremental number
+9-16	  Timestamp             From ESP32 gettimeofday()
+17-20   R-R Interval	 
+21-52	  ECG Data samples      Currently 8 samples/packet
+53      0x0B	                End of Frame
+*/
+
+#ifdef BLE_R2R
 uint8_t DataPacketHeader[20] =                // Response Packet
-{ 0x0A, 0xFA, 0x0C, 0x00, 0x02,               // Header
-  0x00, 0x00, 0x00, 0x00,                     // ecgdata
-  0x00, 0x00, 0x00, 0x00,                     // RR data
-  0x00, 0x00, 0x00, 0x00,                     // HR data
-  0x00, 0x0B };                               // Footer
+{ 0x0A, 0xFA,                                 // [00] Header
+  0x30, 0x00,                                 // [02] Size
+  0x03,                                       // [04] Protocol Version               
+  0x00, 0x00, 0x00, 0x00,                     // [05] ecgdata
+  0x00, 0x00, 0x00, 0x00,                     // [09] RR data
+  0x00, 0x00, 0x00, 0x00,                     // [13] HR data
+  0x00, 0x0B };                               // [17] Footer
+#endif
+
+#ifdef BLE_ECG
+uint8_t DataPacketHeader[54] =                // Response Packet
+{ 0x0A, 0xFA,                                 // [00] Header
+  0x30, 0x00,                                 // [02] Size of data
+  0x03,                                       // [04] Protocol Version               
+  0x00, 0x00, 0x00, 0x00,                     // [05] Packet sequence
+  0x00, 0x00, 0x00, 0x00,                     // [09] Timestamp
+  0x00, 0x00, 0x00, 0x00,                     // [13] Timestamp
+  0x00, 0x00, 0x00, 0x00,                     // [17] R2R data
+  0x00, 0x00, 0x00, 0x00,                     // [21] ecgdata
+  0x00, 0x00, 0x00, 0x00,                     // [25] ecgdata
+  0x00, 0x00, 0x00, 0x00,                     // [29] ecgdata
+  0x00, 0x00, 0x00, 0x00,                     // [33] ecgdata
+  0x00, 0x00, 0x00, 0x00,                     // [37] ecgdata
+  0x00, 0x00, 0x00, 0x00,                     // [41] ecgdata
+  0x00, 0x00, 0x00, 0x00,                     // [45] ecgdata
+  0x00, 0x00, 0x00, 0x00,                     // [49] ecgdata
+  0x0B };                                     // [53] Footer
+#endif
+
+struct timeval time_now;
+uint32_t SequenceNumber = 0;
+uint8_t HexData[3];                         // Temporary formatting array
 
 int32_t maxinfo;                            // Max30003 INFO
 uint16_t maxstatus;                         // Max30003 status register (built from 32bit STATUS)
@@ -79,6 +120,7 @@ volatile uint8_t  ecgFIFOIrq = 0;
 volatile uint32_t rtor_data = 0;
 volatile uint8_t  rtor_detected  = 0;
 volatile uint8_t  rtor_count  = 0;
+volatile uint8_t  ovf_count  = 0;
 uint8_t INTBstatus = 0;
 
 void IRAM_ATTR ecgINTBIRQ()  {            // ECG FIFO IRQ
@@ -121,6 +163,11 @@ void BT_callback(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
     }
 }
 
+void setupBT() {
+  SerialBT.register_callback(BT_callback);
+  BTconnected = SerialBT.begin(BTname);   // Bluetooth Serial (MAX)
+}
+
 void setupMAX30003(void){
  // Use LEDC(PWM) to set FCLK to 32768 Hz
   pinMode(FCLKPin, OUTPUT);
@@ -139,9 +186,9 @@ void setupMAX30003(void){
   SPI.setDataMode(SPI_MODE0);
   SPI.setClockDivider(SPI_CLOCK_DIV4);
   
-  rLED |= rLedBlue;
-  rLedPixel = new Adafruit_NeoPixel(NUMPIXELS, PIXEL_PIN, FORMAT);
-  rLedPixel->begin();
+  cLED |= cLedBlue;
+  LedPixel = new Adafruit_NeoPixel(PIXEL_COUNT, PIXEL_PIN, PIXEL_FORMAT);
+  LedPixel->begin();
   startMillis = millis();
 
 //  Serial.print("Initializing MAX30003 ..");
@@ -199,29 +246,17 @@ void setupOTA(void) {
 
 }
 
-void setupBT(){
-  SerialBT.register_callback(BT_callback);
-  BTconnected = SerialBT.begin(BTname);   // Bluetooth Serial (MAX)
-}
-
 void setup() {
   Serial.begin(115200);                   // USB Serial
-
   setupOTA();
   setupBT();
   setupMAX30003();
-
 }
 
 void loop() {
+
+// Handle OTA download
   ArduinoOTA.handle();  
-    
-  currentMillis = millis();
-  if ((currentMillis - startMillis) >= 1000) {  //test for 1s
-    startMillis = currentMillis;
-    DataPacketHeader[11] += 1;  
-  }
-  r2rLed(rLED);                             // Update LED state
 
 // Handle BT connect/disconnect
   do {
@@ -247,6 +282,20 @@ void loop() {
     delay(20);
   } while (!BTconnected); 
 
+// Handle Status LED 
+  currentMillis = millis();
+  if ((currentMillis - startMillis) >= BLINK_RATE) {  //test for 1s
+    startMillis = currentMillis;
+    DataPacketHeader[12] += 1;                  // R2R byte 3
+    if (ovf_count & cLED & cLedRed){
+       if (ovf_count++ >= LED_FLASH) {
+        ovf_count = 0;
+        cLED &= ~ cLedRed;
+       }
+    }
+  }
+  Led(cLED, bLED);                             // Update LED state
+
 /*
     do {
       MAX30003_Read_Reg (STATUS);             // Read status register
@@ -262,7 +311,7 @@ void loop() {
 */
 
     MAX30003_Read_Reg(STATUS);              // Read status register
-    maxstatus = ((SPI_RX_Buff[1] & 0xF0) | (SPI_RX_Buff[2] & 0x0F));
+    maxstatus = ((SPI_RX_Buff[1] & 0xF0) | (SPI_RX_Buff[2] & 0x0F));    // Create uint16_t status
 /*
 //#ifdef SERIAL_MONITOR
     if (((maxstatus & R2RIRQ) == R2RIRQ) || ((maxstatus & FIFOIRQ) == FIFOIRQ) || ((maxstatus & OVFIRQ) == OVFIRQ)) {
@@ -271,61 +320,91 @@ void loop() {
     }
 //#endif
 */
-
+// Handle R2R IRQ
     if ((maxstatus & R2RIRQ) == R2RIRQ) {
       rtor_data = MAX30003_Read_Reg(RTOR);
       rtor = ((rtor_data >> 10) & 0x3FFF);
       hr =  (float)60 / ((float)rtor * ((float)FCLKPeriod)/1000);
       rtor_count += 1;
-      rLED |= rLedGreen;        // Turn on Green LED
+      cLED |= cLedGreen;                  // Turn on Green LED
       rtor_detected = 0;
     }
 
     if (rtor_count) {
       rtor_count +=1;
-      if (rtor_count > R2R_LED_FLASH) {
+      if (rtor_count > R2R_LED_FLASH) {   // #heartbeats until turn off
         rtor_count = 0;
-        rLED &= ~rLedGreen;      // Turn on Green LED
+        cLED &= ~cLedGreen;      // Turn off Green LED
       }
     } 
-
+// Handle FIFO overflow
     if ((maxstatus & OVFIRQ) == OVFIRQ){                  // Check if FIFO has overflowed                  
       MAX30003_Write_Reg(FIFO_RST, 0);                    // Reset FIFO
-      rLED |= rLedRed;                                    // overflow occured
-    }    
+      cLED |= cLedRed;                                    // overflow occured
+    }
+// Handle ecg Data
     else if ((maxstatus & FIFOIRQ) == FIFOIRQ) {    
         ecgSampleCount = 0;                                             // Reset sample counter 
         do {
             regdata = MAX30003_Read_Reg(ECG_FIFO);                      // Read FIFO
             ecgSample[ecgSampleCount] = (regdata >> 6) & 0x03FFFF;          // Isolate voltage data
-//            ecgSample[ecgSampleCount] = (regdata >> 8) & 0x00FFFF;          // Isolate voltage data
             etagSample[ecgSampleCount] = ( regdata >> 3 ) & ETAG_BITS_MASK; // Isolate ETAG
             R2RSample[ecgSampleCount] = rtor; 
             HRSample[ecgSampleCount] = (uint16_t)hr;
             ecgSampleCount += 1;                                        // Increment sample counter
             ecgSampleCount &= (FIFO_MAX_SAMPLES - 1);                   // Limit to FIFO_MAX_SAMPLES
-
         } while  ((etagSample[ecgSampleCount - 1] != FIFO_VALID_LAST) &&
-                  (etagSample[ecgSampleCount - 1] != FIFO_FAST_LAST));   // &&
-//                  (etagSample[ecgSampleCount - 1] != FIFO_EMPTY) &&
-//                  (etagSample[ecgSampleCount - 1] != FIFO_OVF));
+                  (etagSample[ecgSampleCount - 1] != FIFO_FAST_LAST));
 
         if (etagSample[ecgSampleCount - 1] == FIFO_OVF){                // Check if FIFO has overflowed                  
           MAX30003_Write_Reg(FIFO_RST, 0);                              // Reset FIFO
-          rLED |= rLedRed;                                               // overflow occured
+          cLED |= cLedRed;                                              // overflow occured in FIFI
         }
+#ifdef BLE_R2R
         if ((ecgSampleCount >= 1) && (etagSample[ecgSampleCount - 1] != FIFO_EMPTY)) { // First data already overflowed?
-          for ( int idx = 0; idx < ecgSampleCount; idx++ ) {   // Store valid results and print
-            DataPacketHeader[5] = ecgSample[idx];              // ecgdata
+          for ( int idx = 0; idx < ecgSampleCount; idx++ ) {    // Store valid results and print
+            DataPacketHeader[5] = ecgSample[idx];               // ecgdata
             DataPacketHeader[6] = ecgSample[idx] >> 8;
             DataPacketHeader[7] = ecgSample[idx] >> 16;
-            DataPacketHeader[8] = etagSample[idx];
-            DataPacketHeader[9] = R2RSample[idx];              // R2R
+            DataPacketHeader[8] = etagSample[idx];              // etag for this sample
+            DataPacketHeader[9] = R2RSample[idx];               // R2R
             DataPacketHeader[10] = R2RSample[idx] >> 8;
-            DataPacketHeader[13] = HRSample[idx];              // HR
+            DataPacketHeader[13] = HRSample[idx];               // Calculated HR
             DataPacketHeader[14] = HRSample[idx] >> 8;  
           }
+#endif
+#ifdef BLE_ECG
+        if ((ecgSampleCount >= 1) && (etagSample[ecgSampleCount - 1] != FIFO_EMPTY)) { // First data already overflowed?
+          if (ecgSampleCount > 8) ecgSampleCount = 8;
 
+          DataPacketHeader[5] = SequenceNumber;
+          DataPacketHeader[6] = SequenceNumber >> 8;
+          DataPacketHeader[7] = SequenceNumber >> 16;
+          DataPacketHeader[8] = SequenceNumber >> 24;
+          SequenceNumber++;
+
+          gettimeofday(&time_now, NULL);
+          DataPacketHeader[9] = time_now.tv_sec;
+          DataPacketHeader[10] = time_now.tv_sec >> 8;
+          DataPacketHeader[11] = time_now.tv_sec >> 16;
+          DataPacketHeader[12] = time_now.tv_sec >> 24;
+          DataPacketHeader[13] = time_now.tv_usec;
+          DataPacketHeader[14] = time_now.tv_usec >> 8;
+          DataPacketHeader[15] = time_now.tv_usec >> 16;
+          DataPacketHeader[16] = time_now.tv_usec >> 24;
+
+          DataPacketHeader[17] = rtor;                    // R2R
+          DataPacketHeader[18] = rtor >> 8;               // R2R
+
+          for ( int idx = 0; idx < ecgSampleCount; idx++ ) {    // Store valid results and print
+            int j = (21 + (4 * idx));
+            DataPacketHeader[j] =   ecgSample[idx];              // ecgdata
+            DataPacketHeader[j+1] = ecgSample[idx] >> 8;
+            DataPacketHeader[j+2] = ecgSample[idx] >> 16;
+            DataPacketHeader[j+3] = 0;
+//            DataPacketHeader[j+3] = etagSample[idx];             // etag for this sample
+          }
+#endif
 #ifdef SERIAL_PLOTTER
           sregdata = ((DataPacketHeader[7] << 16) + (DataPacketHeader[6] << 8) + DataPacketHeader[5]); // ecg data only
           if (sregdata > 0x20000) sregdata = -(0x40000 - sregdata);
@@ -352,45 +431,62 @@ void loop() {
           for (int i = 0; (BTSendBuffer[i] != 0); i++) { SerialBT.write(BTSendBuffer[i]); }
           SerialBT.write(',');
 
-          if ((DataPacketHeader[11] & 0x01) == 0x01) {
-            Serial.print(-16000);
-            sprintf(BTSendBuffer, "%d", (-16000));
+          if ((DataPacketHeader[12] & 0x01) == 0x01) {
+            Serial.print(-10000);
+            sprintf(BTSendBuffer, "%d", (-10000));
             for (int i = 0; (BTSendBuffer[i] != 0); i++) { SerialBT.write(BTSendBuffer[i]); }
           }
           else {
-            Serial.print(16000);
-            sprintf(BTSendBuffer, "%d", (-16000));
+            Serial.print(10000);
+            sprintf(BTSendBuffer, "%d", (10000));
             for (int i = 0; (BTSendBuffer[i] != 0); i++) { SerialBT.write(BTSendBuffer[i]); }
           }
 
-          Serial.print(",");
-          SerialBT.write(',');
+//          Serial.print(",");
+//          SerialBT.write(',');
 
 //          }
-      
+
 #endif
 #ifdef SERIAL_MONITOR
-          for(i=5; i<15; i++) {                   // transmit the data packet
-            PrintHex8(&DataPacketHeader[i], 1);
+#ifdef BLE_ECG
+          int j = DataPacketHeader[2] + 6;            // Data + Overheads
+          for(int i=0; i<j; i++) {                    // transmit the packet
+            Hex8(&DataPacketHeader[i], HexData, 1);
+            SerialBT.write(DataPacketHeader[i]);
+            for (int i=0; (HexData[i]!=0); i++) { Serial.write(HexData[i]); }
             Serial.print(" ");
           }
 #endif
+#ifdef BLE_R2R
+          int j = DataPacketHeader[2] + 6;            // Data + Overheads
+          for(int i=0; i<j; i++) {                   // transmit the packet
+            Hex8(&DataPacketHeader[i], HexData, 1);
+            for (int i=0; (HexData[i]!=0); i++) { SerialBT.write(HexData[i]); }
+            SerialBT.write(' ');
+            for (int i=0; (HexData[i]!=0); i++) { Serial.write(HexData[i]); }
+            Serial.print(" ");
+          }
+#endif
+#endif
           Serial.println(";");
+#ifdef BLE_R2R
           SerialBT.write(';');
-          SerialBT.write(0x0d);
-          SerialBT.write(0x0a);
+#endif
+         SerialBT.write(0x0d);
+         SerialBT.write(0x0a);
+ 
+
         }
     }
 }
 
-void max30003_sw_reset(void)
-{
+void max30003_sw_reset(void) {
   MAX30003_Write_Reg(SW_RST, 0x000000);     
   delay(100);
 }
 
-void max30003_synch(void)
-{
+void max30003_synch(void) {
   MAX30003_Write_Reg(SYNCH, 0x000000);
 }
 
@@ -402,7 +498,7 @@ void MAX30003_Write_Reg (uint8_t Write_Address, uint32_t data) {
 
   SPI.beginTransaction(SPISettings(SPI_CLOCK_DIV4, MSBFIRST, SPI_MODE0));
   digitalWrite(MAX30003_CS_PIN, LOW);        // CS Low
-  for ( i = 0; i < 4; i++) {                 // Send Command and Data
+  for ( int i = 0; i < 4; i++) {                 // Send Command and Data
      SPI.transfer(SPI_TX_Buff[i]);
   }
   digitalWrite(MAX30003_CS_PIN, HIGH);       // CS High
@@ -419,7 +515,7 @@ uint32_t MAX30003_Read_Reg(uint8_t Read_Address) {
   SPI.beginTransaction(SPISettings(SPI_CLOCK_DIV4, MSBFIRST, SPI_MODE0));
   digitalWrite(MAX30003_CS_PIN, LOW);            // CS Low
   // SPI.transfer(SPI_TX_Buff[0]);               // Send (command + register address)
-  for ( i = 0; i < 4; i++) {                     // Read the three byte response
+  for ( int i = 0; i < 4; i++) {                     // Read the three byte response
      SPI_RX_Buff[i] = SPI.transfer(SPI_TX_Buff[i]);
   }
   digitalWrite(MAX30003_CS_PIN, HIGH);           // CS High
@@ -437,7 +533,7 @@ void MAX30003_Read_Burst(int num_samples) {
 
   digitalWrite(MAX30003_CS_PIN, LOW);             // CS Low
   SPI.transfer(SPI_TX_Buff[0]);                   // Send (READ + ECG Burst)
-  for ( i = 0; i < num_samples*3; ++i) {          // Read data
+  for ( int i = 0; i < num_samples*3; ++i) {      // Read data
     SPI_temp_Burst[i] = SPI.transfer(0x00);
   }
   digitalWrite(MAX30003_CS_PIN, HIGH);            // CS High  
@@ -578,31 +674,29 @@ void MAX30003_begin() {
 //    Serial.println(" all done.");
 }
 
-void PrintHex8(uint8_t *data, uint8_t length) { // prints 8-bit data in hex
- char tmp[length*2+1];
+void Hex8(uint8_t *idata, uint8_t *odata, uint8_t length) { // prints 8-bit data in hex
  byte first ;
  int j=0;
  for (uint8_t i=0; i<length; i++)
  {
-   first = (data[i] >> 4) | 48;
-   if (first > 57) tmp[j] = first + (byte)39;
-   else tmp[j] = first ;
+   first = (idata[i] >> 4) | 48;
+   if (first > 57) odata[j] = first + (byte)39;
+   else odata[j] = first ;
    j++;
 
-   first = (data[i] & 0x0F) | 48;
-   if (first > 57) tmp[j] = first + (byte)39;
-   else tmp[j] = first;
+   first = (idata[i] & 0x0F) | 48;
+   if (first > 57) odata[j] = first + (byte)39;
+   else odata[j] = first;
    j++;
  }
- tmp[length*2] = 0;
- Serial.print(tmp);
+ odata[length*2] = 0;
 }
 
-void r2rLed(uint8_t color){
-  uint8_t r, g, b = 0;
-  if (color & rLedRed)    r = BRIGHTNESS;
-  if (color & rLedGreen)  g = BRIGHTNESS;
-  if (color & rLedBlue)   b = BRIGHTNESS;
-  rLedPixel->setPixelColor(0, r, g, b);
-  rLedPixel->show();
+void Led(uint8_t color, uint8_t brightness){
+  r = 0; b = 0; g = 0;
+  if (color & cLedRed)    r = brightness;
+  if (color & cLedGreen)  g = brightness;
+  if (color & cLedBlue)   b = brightness;
+  LedPixel->setPixelColor(0, r, g, b);
+  LedPixel->show();
 }

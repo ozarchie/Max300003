@@ -1,4 +1,6 @@
 #include <arduino.h>
+#include "..\data\secrets.h"
+
 #include <SPI.h>
 #include <Adafruit_NeoPixel.h>
 #include <BluetoothSerial.h>
@@ -24,6 +26,9 @@
 #undef  SERIAL_MONITOR
 #undef SERIAL_PLOTTER
 
+const char* ssid = SSID;                // Github immune secrets file
+const char* password = PASS;
+
 BluetoothSerial SerialBT;
 String BTname = "HeartSensor";
 // char *BTpin = "1234";
@@ -33,10 +38,7 @@ int BTCount = 0;
 String BTcallback = "";
 String BTreadData = "";
 
-uint8_t rLED = rLedOff;       // Red Status LED
-uint8_t gLED = rLedOff;       // Green Status LED
-uint8_t bLED = rLedOff;       // Blue Status LED
-Adafruit_NeoPixel *rLedPixel;
+Adafruit_NeoPixel *LedPixel;
 
 uint16_t i=0;
 uint32_t startMillis = 0;
@@ -121,13 +123,20 @@ void BT_callback(esp_spp_cb_event_t event, esp_spp_cb_param_t *param)
     }
 }
 
-void setup()
-{
-  Serial.begin(115200);                   // USB Serial (RPC)
-
+void Led(uint8_t color, uint8_t brightness){
+  r = 0; b = 0; g = 0;
+  if (color & cLedRed)    r = brightness;
+  if (color & cLedGreen)  g = brightness;
+  if (color & cLedBlue)   b = brightness;
+  LedPixel->setPixelColor(0, r, g, b);
+  LedPixel->show();
+}
+void setupBT() {
   SerialBT.register_callback(BT_callback);
   BTconnected = SerialBT.begin(BTname);   // Bluetooth Serial (MAX)
+}
 
+void setupMAX30003() {
 // Display RPC start banner
   Serial.printf("MAX30003 HeartSensor %d.%d.%d %02d/%02d/%02d\n", 
     VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH, 
@@ -155,25 +164,31 @@ void setup()
   SPI.setDataMode(SPI_MODE0);
   SPI.setClockDivider(SPI_CLOCK_DIV4);
   
-  rLedPixel = new Adafruit_NeoPixel(NUMPIXELS, PIXEL_PIN, FORMAT);
-  rLedPixel->begin();
-  rLedPixel->show();
-  r2rLed(rLedBlue);
-
-  startMillis = millis();
-
-//  Serial.print("Initializing MAX30003 ..");
+  LedPixel = new Adafruit_NeoPixel(PIXEL_COUNT, PIXEL_PIN, PIXEL_FORMAT);
+  LedPixel->begin();
+  LedPixel->show();
+  cLED = cLedBlue;
+  Led(cLED, bLED);
+  //  Serial.print("Initializing MAX30003 ..");
   MAX30003_begin();   // initialize MAX30003
+}
+
+void setup()
+{
+  Serial.begin(115200);                   // USB Serial
+  setupBT();                              // Bluetooth Serial
+  setupMAX30003();
+  startMillis = millis();
 }
 
 void loop() {
 
-  r2rLed(rLedUpdate);                           // Update LED state
+  Led(cLED, bLED);                           // Update LED state
 
   // Handle RPC
 //  Serial.printf("Checking for RPC commands ...\n");
-  inputState = getLine(request, sizeof(request));  // get a RPC string if one is available
-  if (inputState == GETLINE_DONE) {                // if a string has been captured, process string
+  inputState = getLine(request, sizeof(request));       // get a RPC string if one is available
+  if (inputState == GETLINE_DONE) {                     // if a string has been captured, process string
     Serial.printf(request);                             // Send request to debug port
     Serial.print(" : ");
     RPC_call(request, reply);                           // process the RPC string
@@ -210,9 +225,9 @@ void loop() {
     startMillis = currentMillis;
     DataPacketHeader[11] += 1;                  // Set time in packet data
     if ((DataPacketHeader[11] & 0x01) == 0x01)  // Flash Blue LED
-      bLED = BRIGHTNESS;
+      cLED |= cLedBlue;
     else
-      bLED = rLedOff;
+      cLED &= ~cLedBlue;
   }
 
   maxresult = max30003_reg_read(STSREG, &max30003_status.all); // Read status register
@@ -226,21 +241,21 @@ void loop() {
     if (hrAvg == 0)                           // Initialize first hrAvg
      hrAvg = (int16_t) hr;
     rtor_count += 1;
-    gLED = BRIGHTNESS;                        // Turn on Green LED
+    cLED |= cLedGreen;                        // Turn on Green LED
     rtor_detected = 0;
   }
 
   if (rtor_count) {
     rtor_count +=1;
-    if (rtor_count > R2R_LED_FLASH) {
+    if (rtor_count > LED_FLASH) {
       rtor_count = 0;
-      gLED = rLedOff;                       // Turn off Green LED
+      cLED &= ~cLedGreen;                       // Turn off Green LED
     }
   } 
 
   if ((maxstatus & MAX_OVFIRQ) == MAX_OVFIRQ){          // Check if FIFO has overflowed                  
     max30003_reg_write(FIFO_RST, 0);                    // Reset FIFO
-    rLED = BRIGHTNESS;                                  // overflow occured
+    cLED |= cLedRed;                                    // Red LED on, overflow occured
   }    
   else if ((maxstatus & MAX_FIFOIRQ) == MAX_FIFOIRQ) {    
     ecgSampleCount = 0;                                                 // Reset sample counter 
@@ -261,7 +276,7 @@ void loop() {
 
     if (etagSample[ecgSampleCount - 1] == FIFO_OVF){                // Check if FIFO has overflowed                  
       max30003_reg_write(FIFO_RST, 0);                              // Reset FIFO
-      rLED = rLedOff;                                               // overflow occured
+      cLED |= cLedRed;                                              // Red LED on, overflow occured
     }
     if ((ecgSampleCount >= 1) && (etagSample[ecgSampleCount - 1] != FIFO_IS_EMPTY)) { // First data already overflowed?
       for ( int idx = 0; idx < ecgSampleCount; idx++ ) {
@@ -541,35 +556,19 @@ void PrintHex8(uint8_t *data, uint8_t length) { // prints 8-bit data in hex
 }
 
 void setLedOn(uint8_t color) {
-  setLed(color, BRIGHTNESS);
+  Led(color, BRIGHTNESS);
 }
 
 void setLedOff(uint8_t color) {
-  setLed(color, rLedOff);
+  Led(color, cLedOff);
 }
 
 void setLedBlink(uint8_t color) {
-  setLed(color, BRIGHTNESS);
+  Led(color, BRIGHTNESS);
 }
 
 void setLedPattern(uint8_t color) {
-  setLed(color, rLedOff);
-}
-
-void setLed(uint8_t color, uint8_t intensity){
-  if (color == rLedRed)    rLED = intensity;
-  if (color == rLedGreen)  gLED = intensity;
-  if (color == rLedBlue)   bLED = intensity; 
-  rLedPixel->setPixelColor(0, rLED, gLED, bLED);       // PixelNumber, R, G, B
-  rLedPixel->show();
-}
-
-void r2rLed(uint8_t color){
-  if (color & rLedRed)    rLED = BRIGHTNESS;
-  if (color & rLedGreen)  gLED = BRIGHTNESS;
-  if (color & rLedBlue)   bLED = BRIGHTNESS; 
-  rLedPixel->setPixelColor(0, rLED, gLED, bLED);       // PixelNumber, R, G, B
-  rLedPixel->show();
+  Led(color, cLedOff);
 }
 
 #define SerialHSP   SerialBT
@@ -623,9 +622,9 @@ char getch(void) {
 }
  
 /**
-* @brief Place incoming USB characters into a fifo
-* @param lineBuffer buffer to place the incoming characters
-* @param bufferLength length of buffer
+* @brief  Place incoming USB characters into a fifo
+* @param  lineBuffer buffer to place the incoming characters
+* @param  bufferLength length of buffer
 * @return GETLINE_WAITING if still waiting for a CRLF, GETLINE_DONE
 */
 int getLine(char *lineBuffer, int bufferLength) {

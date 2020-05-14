@@ -1,14 +1,6 @@
 #pragma once
 
 #include <arduino.h>
-#include <Adafruit_NeoPixel.h>
-#include <BluetoothSerial.h>
-
-#include "..\include\permission.h"
-#include "..\include\esp32_rpc.h"
-#include "..\include\esp32_fifo.h"
-#include "..\include\esp32_helpers.h"
-#include "..\include\max30003_fns.h"
 
 #define WREG 0x00
 #define RREG 0x01
@@ -67,21 +59,25 @@ const uint16_t FCLKResolution = 8;      // Need resolution < 12 for 32kHz
 const uint16_t FCLKDuty = 127;          // Square wave (50% duty cycle, ((2^8 - 1) / 2) = 127)
 
 // NeoPixel LED
-#define LED_TYPE      WS2812B
+#define PIXEL_TYPE      WS2812B
+
 const uint16_t PIXEL_PIN        = 14;   // Digital14 attached to NeoPixel data
-const uint16_t NUMPIXELS        = 1;
-const uint16_t BRIGHTNESS       = 25;
-const uint16_t FORMAT           = NEO_GRB + NEO_KHZ800;
+const uint16_t PIXEL_COUNT      = 1;
+const uint16_t PIXEL_FORMAT     = NEO_GRB + NEO_KHZ800;
 
-const uint8_t  rLedOff    = 0;
-const uint8_t  rLedRed    = 1;
-const uint8_t  rLedGreen  = 2;
-const uint8_t  rLedBlue   = 4;
-const uint8_t  rLedUpdate = 8;
+const uint8_t  cLedOff    = 0;
+const uint8_t  cLedRed    = 1;
+const uint8_t  cLedGreen  = 2;
+const uint8_t  cLedBlue   = 4;
 
-#define R2R_LED_ON    BRIGHTNESS
-#define R2R_LED_OFF   0
-#define R2R_LED_FLASH 16
+const uint16_t BRIGHTNESS       = 128;
+#define LED_ON    BRIGHTNESS
+#define LED_OFF   0
+#define LED_FLASH 16
+
+uint8_t cLED = cLedOff;
+uint8_t bLED = BRIGHTNESS;
+uint8_t r, g, b;
 
 // Data Packet
 const uint8_t  PacketLength     = 19;

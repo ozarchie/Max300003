@@ -12,6 +12,7 @@
 #include "..\include\esp32_streaming.h"
 #include "..\include\esp32_helpers.h"
 
+
 //******************************************************************************
 int max30003_Rbias_FMSTR_Init(uint8_t En_rbias, uint8_t Rbiasv,
                                         uint8_t Rbiasp, uint8_t Rbiasn,
@@ -626,15 +627,10 @@ int32_t SPI_Transmit(const uint8_t *tx_buf, uint32_t tx_size, uint8_t *rx_buf, u
   return 0;
 }
 
-//PtrFunction_t onDataAvailableCallback = NULL;                       // Set onDataAvailableCallback to 'do nothing'
-PtrFunction_t onDataAvailableCallback = &StreamPacketUint32;        // Set onDataAvailableCallback to StreamPacketUint32(...);
-
 //******************************************************************************
-void onDataAvailable(PtrFunction_t onDataReady) {
-  onDataAvailableCallback = onDataReady;
+void onDataAvailable(PtrFunction_t onDataReadyPtr) {
+  onDataAvailableCallback = onDataReadyPtr;
 }
-
-// onDataAvailable(onDataAvailableCallback);
 
 /**
 * @brief Used to notify an external function that interrupt data is available
@@ -643,6 +639,7 @@ void onDataAvailable(PtrFunction_t onDataReady) {
 * @param length length of 32-bit elements available
 */
 void dataAvailable(uint32_t id, uint32_t *buffer, uint32_t length) {
+  onDataAvailable(StreamPacketUint32);                    // Set onDataAvailableCallback to StreamPacketUint32(...);
   if (onDataAvailableCallback != NULL) {
     (*onDataAvailableCallback)(id, buffer, length);
   }

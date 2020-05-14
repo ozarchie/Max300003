@@ -437,7 +437,7 @@ int MAX30003_Read_LeadON(char argStrs[32][32], char replyStrs[32][32]) {
 
  int Led_On(char argStrs[32][32], char replyStrs[32][32]) {
   uint32_t reply[1];
-  setLedOn(rLedRed);
+  setLedOn(cLedRed);
   reply[0] = 0x80;
   FormatReply32(reply, sizeof(reply) / sizeof(uint32_t), replyStrs);
   return 0;
@@ -445,7 +445,7 @@ int MAX30003_Read_LeadON(char argStrs[32][32], char replyStrs[32][32]) {
  
 int Led_Off(char argStrs[32][32], char replyStrs[32][32]) {
   uint32_t reply[1];
-  setLedOff(rLedRed);
+  setLedOff(cLedRed);
   reply[0] = 0x80;
   FormatReply32(reply, sizeof(reply) / sizeof(uint32_t), replyStrs);
   return 0;
@@ -455,7 +455,7 @@ int Led_BlinkHz(char argStrs[32][32], char replyStrs[32][32]) {
   uint32_t args[1];
   uint32_t reply[1];
   ProcessArgs32(argStrs, args, sizeof(args) / sizeof(uint32_t));
-  setLedBlink(rLedRed);
+  setLedBlink(cLedRed);
   reply[0] = 0x80;
   FormatReply32(reply, sizeof(reply) / sizeof(uint32_t), replyStrs);
   return 0;
@@ -465,7 +465,7 @@ int Led_BlinkPattern(char argStrs[32][32], char replyStrs[32][32]) {
   uint32_t args[2];
   uint32_t reply[1];
   ProcessArgs32(argStrs, args, sizeof(args) / sizeof(uint32_t));
-  setLedPattern(rLedRed);
+  setLedPattern(cLedRed);
   reply[0] = 0x80;
   FormatReply32(reply, sizeof(reply) / sizeof(uint32_t), replyStrs);
   return 0;
